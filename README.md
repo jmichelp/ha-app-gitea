@@ -23,7 +23,7 @@ Self-hosted Git service with code repositories, issues, pull requests, and Git L
 [commits-shield]: https://img.shields.io/github/commit-activity/y/jmichelp/ha-app-gitea.svg
 [commits]: https://github.com/jmichelp/ha-app-gitea/commits/main
 [maintenance-shield]: https://img.shields.io/maintenance/yes/2026.svg
-[project-stage-shield]: https://img.shields.io/badge/project%20stage-experimental-yellow.svg
+[project-stage-shield]: https://img.shields.io/badge/project%20stage-stable-green.svg
 [releases-shield]: https://img.shields.io/github/release/jmichelp/ha-app-gitea.svg
 [releases]: https://github.com/jmichelp/ha-app-gitea/releases
 
