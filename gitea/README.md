@@ -25,10 +25,10 @@ This app allows you to run a lightweight, self-hosted Gitea Git service directly
 
 [aarch64-shield]: https://img.shields.io/badge/aarch64-yes-green.svg
 [amd64-shield]: https://img.shields.io/badge/amd64-yes-green.svg
-[commits-shield]: https://img.shields.io/github/commit-activity/y/jmichelp/ha-addon-gitea.svg
-[commits]: https://github.com/jmichelp/ha-addon-gitea/commits/main
+[commits-shield]: https://img.shields.io/github/commit-activity/y/jmichelp/ha-app-gitea.svg
+[commits]: https://github.com/jmichelp/ha-app-gitea/commits/main
 [maintenance-shield]: https://img.shields.io/maintenance/yes/2026.svg
 [project-stage-shield]: https://img.shields.io/badge/project%20stage-stable-green.svg
-[releases-shield]: https://img.shields.io/github/release/jmichelp/ha-addon-gitea.svg
-[releases]: https://github.com/jmichelp/ha-addon-gitea/releases
+[releases-shield]: https://img.shields.io/github/release/jmichelp/ha-app-gitea.svg
+[releases]: https://github.com/jmichelp/ha-app-gitea/releases
 
