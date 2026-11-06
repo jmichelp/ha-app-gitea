@@ -26,10 +26,16 @@ jobs:
         run: |
           echo "=== Checking Upstream Alpine Gitea Version ==="
           echo "Pulling Home Assistant base image..."
-          docker pull ghcr.io/home-assistant/amd64-base:latest
+          docker pull ghcr.io/home-assistant/base:latest
 
-          UPSTREAM_VERSION=$(docker run --rm ghcr.io/home-assistant/amd64-base:latest sh -c \
-            "apk update >/dev/null 2>&1 && (apk list gitea 2>/dev/null | head -n1 | cut -d' ' -f1 | sed 's/^gitea-//' || apk search -x -v gitea 2>/dev/null | head -n1 | cut -d' ' -f1 | sed 's/^gitea-//')")
+          UPSTREAM_VERSION=$(docker run --rm --entrypoint /bin/sh ghcr.io/home-assistant/base:latest -c '
+            apk update >/dev/null 2>&1 || exit 1
+            v=$(apk list gitea 2>/dev/null | sed -n "s/^gitea-\([0-9][^ ]*\).*/\1/p" | head -n1)
+            if [ -z "$v" ]; then
+              v=$(apk search -x -v gitea 2>/dev/null | sed -n "s/^gitea-\([0-9][^ ]*\).*/\1/p" | head -n1)
+            fi
+            printf "%s" "$v"
+          ')
 
           if [ -z "$UPSTREAM_VERSION" ]; then
             echo "::error::Could not determine upstream Gitea package version from Alpine repository."
@@ -38,17 +44,29 @@ jobs:
           echo "Upstream Alpine Gitea version: $UPSTREAM_VERSION"
 
           echo "=== Checking Current Gitea Version in Docker ==="
-          DOCKER_IMAGE="ghcr.io/jmichelp/app-gitea:latest"
+          DOCKER_IMAGE=""
           CURRENT_VERSION=""
 
-          if docker pull "$DOCKER_IMAGE" 2>/dev/null || docker pull "ghcr.io/jmichelp/app-gitea:amd64-latest" 2>/dev/null; then
-            # Try apk info inside the image first
-            CURRENT_VERSION=$(docker run --rm --entrypoint /bin/sh "$DOCKER_IMAGE" -c \
-              "apk info -v gitea 2>/dev/null | head -n1 | sed 's/^gitea-//'" 2>/dev/null || true)
-            
-            # Fallback to gitea binary version if apk info is not available
+          for candidate in "ghcr.io/jmichelp/app-gitea:latest" "ghcr.io/jmichelp/app-gitea:amd64-latest"; do
+            if docker pull "$candidate" 2>/dev/null; then
+              DOCKER_IMAGE="$candidate"
+              break
+            fi
+          done
+
+          if [ -n "$DOCKER_IMAGE" ]; then
+            # Query installed gitea package version via apk (apk list -I / apk info -e -v)
+            CURRENT_VERSION=$(docker run --rm --entrypoint /bin/sh "$DOCKER_IMAGE" -c '
+              v=$(apk list -I gitea 2>/dev/null | sed -n "s/^gitea-\([0-9][^ ]*\).*/\1/p" | head -n1)
+              if [ -z "$v" ]; then
+                v=$(apk info -e -v gitea 2>/dev/null | sed -n "s/^gitea-\([0-9][^ ]*\).*/\1/p" | head -n1)
+              fi
+              printf "%s" "$v"
+            ' 2>/dev/null || true)
+
+            # Fallback to gitea binary version if apk package version is not available
             if [ -z "$CURRENT_VERSION" ]; then
-              CURRENT_VERSION=$(docker run --rm --entrypoint gitea "$DOCKER_IMAGE" --version 2>/dev/null | awk '{print $3}' || true)
+              CURRENT_VERSION=$(docker run --rm --entrypoint gitea "$DOCKER_IMAGE" --version 2>/dev/null | awk '/^Gitea version / {print $3; exit}' || true)
             fi
           fi
 
