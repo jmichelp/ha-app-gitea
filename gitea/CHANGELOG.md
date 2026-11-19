@@ -1,5 +1,15 @@
 <!-- https://developers.home-assistant.io/docs/add-ons/presentation#keeping-a-changelog -->
 
+## 0.7.1
+
+- Update `git` to 2.54.1-r0
+- Update `openssh-client` to 10.3_p1-r2
+- Update `openssh-server` to 10.3_p1-r2
+- Update `openssh-sftp-server` to 10.3_p1-r2
+- Update `openssh-keygen` to 10.3_p1-r2
+- Update `tzdata` to 2026f-r0
+- Update `nginx` to 1.30.7-r0
+
 ## 0.7.0
 
 - Update Gitea to 1.25.4-r5
