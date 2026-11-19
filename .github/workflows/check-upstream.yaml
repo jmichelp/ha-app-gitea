@@ -1,4 +1,4 @@
-name: Check Upstream Gitea Version
+name: Check Upstream Package Versions
 
 on:
   schedule:
@@ -11,88 +11,25 @@ permissions:
 
 jobs:
   check:
-    name: Check for Alpine Gitea updates
+    name: Check for Alpine package updates
     runs-on: ubuntu-latest
     outputs:
       update_available: ${{ steps.check.outputs.update_available }}
+      bump_type: ${{ steps.check.outputs.bump_type }}
+      gitea_updated: ${{ steps.check.outputs.gitea_updated }}
+      updated_packages: ${{ steps.check.outputs.updated_packages }}
       upstream_version: ${{ steps.check.outputs.upstream_version }}
       current_version: ${{ steps.check.outputs.current_version }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Check upstream Alpine and Docker Gitea versions
+      - name: Check upstream Alpine and Docker package versions
         id: check
         run: |
-          echo "=== Checking Upstream Alpine Gitea Version ==="
-          echo "Pulling Home Assistant base image..."
-          docker pull ghcr.io/home-assistant/base:latest
-
-          UPSTREAM_VERSION=$(docker run --rm --entrypoint /bin/sh ghcr.io/home-assistant/base:latest -c '
-            apk update >/dev/null 2>&1 || exit 1
-            v=$(apk list gitea 2>/dev/null | sed -n "s/^gitea-\([0-9][^ ]*\).*/\1/p" | head -n1)
-            if [ -z "$v" ]; then
-              v=$(apk search -x -v gitea 2>/dev/null | sed -n "s/^gitea-\([0-9][^ ]*\).*/\1/p" | head -n1)
-            fi
-            printf "%s" "$v"
-          ')
-
-          if [ -z "$UPSTREAM_VERSION" ]; then
-            echo "::error::Could not determine upstream Gitea package version from Alpine repository."
-            exit 1
-          fi
-          echo "Upstream Alpine Gitea version: $UPSTREAM_VERSION"
-
-          echo "=== Checking Current Gitea Version in Docker ==="
-          DOCKER_IMAGE=""
-          CURRENT_VERSION=""
-
-          for candidate in "ghcr.io/jmichelp/app-gitea:latest" "ghcr.io/jmichelp/app-gitea:amd64-latest"; do
-            if docker pull "$candidate" 2>/dev/null; then
-              DOCKER_IMAGE="$candidate"
-              break
-            fi
-          done
-
-          if [ -n "$DOCKER_IMAGE" ]; then
-            # Query installed gitea package version via apk (apk list -I / apk info -e -v)
-            CURRENT_VERSION=$(docker run --rm --entrypoint /bin/sh "$DOCKER_IMAGE" -c '
-              v=$(apk list -I gitea 2>/dev/null | sed -n "s/^gitea-\([0-9][^ ]*\).*/\1/p" | head -n1)
-              if [ -z "$v" ]; then
-                v=$(apk info -e -v gitea 2>/dev/null | sed -n "s/^gitea-\([0-9][^ ]*\).*/\1/p" | head -n1)
-              fi
-              printf "%s" "$v"
-            ' 2>/dev/null || true)
-
-            # Fallback to gitea binary version if apk package version is not available
-            if [ -z "$CURRENT_VERSION" ]; then
-              CURRENT_VERSION=$(docker run --rm --entrypoint gitea "$DOCKER_IMAGE" --version 2>/dev/null | awk '/^Gitea version / {print $3; exit}' || true)
-            fi
-          fi
-
-          # Fallback: check CHANGELOG.md if image could not be pulled or version not detected
-          if [ -z "$CURRENT_VERSION" ] && [ -f "gitea/CHANGELOG.md" ]; then
-            echo "Docker image not available or version not detected, checking CHANGELOG.md for last version..."
-            CURRENT_VERSION=$(grep -oE "Update Gitea to [^ ]+" gitea/CHANGELOG.md | head -n1 | sed 's/Update Gitea to //' || true)
-          fi
-
-          echo "Current Docker Gitea version: ${CURRENT_VERSION:-unknown}"
-
-          echo "=== Version Comparison ==="
-          UPSTREAM_BASE="${UPSTREAM_VERSION%%-r*}"
-          CURRENT_BASE="${CURRENT_VERSION%%-r*}"
-
-          if [ -n "$UPSTREAM_VERSION" ] && [ "$UPSTREAM_VERSION" != "$CURRENT_VERSION" ] && [ "$UPSTREAM_BASE" != "$CURRENT_VERSION" ]; then
-            echo "New Gitea version available: $UPSTREAM_VERSION (current: ${CURRENT_VERSION:-none})"
-            echo "update_available=true" >> "$GITHUB_OUTPUT"
-            echo "upstream_version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
-            echo "current_version=${CURRENT_VERSION:-unknown}" >> "$GITHUB_OUTPUT"
-          else
-            echo "Gitea is up to date ($CURRENT_VERSION). No update needed."
-            echo "update_available=false" >> "$GITHUB_OUTPUT"
-            echo "upstream_version=$UPSTREAM_VERSION" >> "$GITHUB_OUTPUT"
-            echo "current_version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
-          fi
+          python3 .github/scripts/check-upstream.py \
+            --dockerfile gitea/Dockerfile \
+            --changelog gitea/CHANGELOG.md
 
   update:
     name: Trigger update workflow
@@ -103,6 +40,8 @@ jobs:
       pull-requests: write
     uses: ./.github/workflows/update-version.yaml
     with:
+      bump_type: ${{ needs.check.outputs.bump_type }}
+      updated_packages: ${{ needs.check.outputs.updated_packages }}
       upstream_version: ${{ needs.check.outputs.upstream_version }}
       current_version: ${{ needs.check.outputs.current_version }}
     secrets: inherit
