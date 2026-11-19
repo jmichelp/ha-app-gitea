@@ -1,0 +1,86 @@
+name: Create Release
+
+on:
+  workflow_run:
+    workflows: ["Builder"]
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: read
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    steps:
+      - name: Verify automated update PR and published build
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          # 1. Confirm build-app.yaml actually ran and published the multi-arch manifest
+          MANIFEST_JOB=$(gh api --paginate "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
+            --jq '.jobs[] | select((.name | contains("Publish multi-arch manifest")) and .conclusion == "success") | .name' | head -n1)
+
+          if [ -z "${MANIFEST_JOB}" ]; then
+            echo "Build/publish job did not run or succeed in Builder run ${RUN_ID}; skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 2. Confirm the commit belongs to a merged PR created by update-version.yaml
+          MATCHED_PR=$(gh api "repos/${REPO}/commits/${HEAD_SHA}/pulls" \
+            --jq '[.[] | select(.merged_at != null and .base.ref == "main" and .user.login == "github-actions[bot]" and (.head.ref | startswith("update-gitea-")))] | .[0].number // empty')
+
+          if [ -z "${MATCHED_PR}" ]; then
+            echo "Commit ${HEAD_SHA} is not a merged automated update PR from update-version.yaml; skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Verified merged automated update PR #${MATCHED_PR} and published image for ${HEAD_SHA}."
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+          echo "pr_number=${MATCHED_PR}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out merged commit
+        if: steps.verify.outputs.should_release == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Create GitHub Release
+        if: steps.verify.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          VERSION=$(sed -n 's/^version:[[:space:]]*["'\'']\{0,1\}\([^"'\''[:space:]]*\)["'\'']\{0,1\}.*/\1/p' gitea/config.yaml | head -n1)
+          if [ -z "${VERSION}" ]; then
+            echo "::error::Could not read version from gitea/config.yaml"
+            exit 1
+          fi
+
+          TAG="v${VERSION}"
+          echo "Resolved release tag: ${TAG} (target: ${HEAD_SHA})"
+
+          if gh release view "${TAG}" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag or release ${TAG} already exists; skipping."
+            exit 0
+          fi
+
+          gh release create "${TAG}" \
+            --target "${HEAD_SHA}" \
+            --title "${TAG}" \
+            --generate-notes
