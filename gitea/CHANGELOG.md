@@ -1,5 +1,9 @@
 <!-- https://developers.home-assistant.io/docs/add-ons/presentation#keeping-a-changelog -->
 
+## 0.7.2
+
+- Update `nginx` to 1.30.8-r0
+
 ## 0.7.1
 
 - Update `git` to 2.54.1-r0
